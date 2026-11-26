@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Referencias">
+<meta name="theme-color" content="#1c1c1c">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Referencias</title>
+<style>
+  :root { --bg: #1c1c1c; --dot: #3a3a3a; --bar: rgba(44,44,46,.82); --fg: #f2f2f2; --muted: #9a9a9a; --accent: #ff9500; }
+  :root[data-theme="light"] { --bg: #efefef; --dot: #c9c9c9; --bar: rgba(255,255,255,.86); --fg: #1d1d1f; --muted: #6e6e73; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: 15px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
+  #board { position: fixed; inset: 0; touch-action: none; background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--dot) 1.3px, transparent 1.7px); }
+  .item { position: absolute; box-shadow: 0 2px 12px rgba(0,0,0,.3); }
+  .item img { width: 100%; height: 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
+  .item.sel { outline: 2px solid var(--accent); }
+  .handle { position: absolute; right: -13px; bottom: -13px; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #fff; box-sizing: border-box; display: none; }
+  .handle::after { content: ""; position: absolute; inset: -16px; }
+  .item.sel .handle { display: block; }
+  .bar { position: fixed; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px;
+    padding: 5px 8px; border-radius: 999px; background: var(--bar); z-index: 10000;
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: 0 2px 14px rgba(0,0,0,.28); }
+  .bar[hidden] { display: none; }
+  #top { top: calc(env(safe-area-inset-top) + 10px); }
+  #sel { bottom: calc(env(safe-area-inset-bottom) + 16px); }
+  .bar button { appearance: none; -webkit-appearance: none; border: 0; background: none; color: var(--fg);
+    width: 46px; height: 40px; border-radius: 20px; display: grid; place-items: center; padding: 0; cursor: pointer; }
+  .bar button:active { background: rgba(127,127,127,.25); }
+  .bar button.on { color: var(--accent); }
+  .bar button.danger { color: #ff453a; }
+  .bar svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sep { width: 1px; height: 22px; background: rgba(127,127,127,.4); margin: 0 4px; }
+  #hint { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; text-align: center; color: var(--muted); padding: 0 24px; }
+  #hint[hidden] { display: none; }
+  #hint h2 { font-size: 18px; margin: 12px 0 6px; color: var(--fg); font-weight: 600; }
+  #hint p { margin: 0 auto; max-width: 400px; line-height: 1.4; }
+  #hint svg { width: 48px; height: 48px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+  #drop { position: fixed; inset: 12px; border: 4px dashed var(--accent); border-radius: 24px; pointer-events: none; z-index: 9999; display: none; }
+  #drop.on { display: block; }
+  #toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 66px); transform: translateX(-50%);
+    background: var(--bar); color: var(--fg); padding: 8px 14px; border-radius: 12px; z-index: 10001;
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="board"></div>
+
+<div id="hint">
+  <div>
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+    <h2>Arrastra fotos desde la app Fotos</h2>
+    <p>Abre Fotos al lado (Split View o Stage Manager) y arrastra una o varias imágenes hasta aquí. También puedes tocar + o pegar una imagen copiada.</p>
+  </div>
+</div>
+<div id="drop"></div>
+<div id="toast"></div>
+
+<div class="bar" id="top">
+  <button id="add" aria-label="Agregar fotos" title="Agregar fotos"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button id="paste" aria-label="Pegar" title="Pegar"><svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+  <div class="sep"></div>
+  <button id="fit" aria-label="Ver todo" title="Ver todo"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+  <button id="lock" aria-label="Bloquear" title="Bloquear"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path id="shackle" d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></button>
+  <button id="theme" aria-label="Fondo" title="Fondo claro u oscuro"><svg viewBox="0 0 24 24"><path id="themeIcon" d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+</div>
+
+<div class="bar" id="sel" hidden>
+  <button id="front" aria-label="Al frente" title="Al frente"><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></button>
+  <button id="rotate" aria-label="Girar" title="Girar 90°"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></svg></button>
+  <button id="flip" aria-label="Espejo" title="Espejo"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3M12 2v2M12 8v2M12 14v2M12 20v2"/></svg></button>
+  <button id="gray" aria-label="Blanco y negro" title="Blanco y negro"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor"/></svg></button>
+  <div class="sep"></div>
+  <button id="delete" class="danger" aria-label="Eliminar" title="Eliminar"><svg viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+</div>
+
+<input type="file" id="file" accept="image/*" multiple hidden>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const board = $("#board");
+const MIN_S = 0.05, MAX_S = 8, MAX_SIDE = 2400;
+
+// Board state. Item positions/sizes are in canvas ("world") units; cam maps world -> screen.
+// item: { id, x, y (centre), w (width), a (height / width), r (rotation deg), f (mirrored), g (grayscale) }
+let S = { items: [], cam: { x: innerWidth / 2, y: innerHeight / 2, s: 1 }, locked: false, light: false };
+let sel = null;
+const urls = {};
+
+// ---------- Storage (IndexedDB: survives reloads; images stored as blobs) ----------
+const dbp = new Promise((res, rej) => {
+  try {
+    const r = indexedDB.open("referencias", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  } catch (e) { rej(e); }
+});
+async function idb(mode, fn) {
+  const db = await dbp;
+  return new Promise((res, rej) => {
+    const tx = db.transaction("kv", mode);
+    const req = fn(tx.objectStore("kv"));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+const dbGet = k => idb("readonly", s => s.get(k));
+const dbPut = (k, v) => idb("readwrite", s => s.put(v, k));
+const dbDel = k => idb("readwrite", s => s.delete(k));
+let saveTimer;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => dbPut("state", S).catch(() => toast("No se pudo guardar")), 250);
+}
+
+// ---------- Helpers ----------
+const find = id => S.items.find(i => i.id === id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const toScreen = it => ({ x: it.x * S.cam.s + S.cam.x, y: it.y * S.cam.s + S.cam.y });
+const center = () => ({ x: innerWidth / 2, y: innerHeight / 2 });
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2200);
+}
+
+// ---------- Rendering ----------
+const nodes = new Map();
+function nodeFor(it) {
+  let n = nodes.get(it.id);
+  if (!n) {
+    n = document.createElement("div");
+    n.className = "item"; n.dataset.id = it.id;
+    const img = document.createElement("img"); img.draggable = false; img.alt = "";
+    const h = document.createElement("div"); h.className = "handle";
+    n.append(img, h);
+    nodes.set(it.id, n); board.appendChild(n);
+    loadSrc(it.id, img);
+  }
+  return n;
+}
+async function loadSrc(id, img) {
+  if (!urls[id]) {
+    const b = await dbGet("img:" + id).catch(() => null);
+    if (!b) return;
+    urls[id] = URL.createObjectURL(b);
+  }
+  img.src = urls[id];
+}
+let raf = 0;
+function render() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
+function draw() {
+  const { x, y, s } = S.cam;
+  let sp = 40 * s; while (sp < 18) sp *= 4;
+  board.style.backgroundSize = `${sp}px ${sp}px`;
+  board.style.backgroundPosition = `${x - sp / 2}px ${y - sp / 2}px`;
+  const live = new Set(S.items.map(i => i.id));
+  for (const [id, n] of nodes) if (!live.has(id)) { n.remove(); nodes.delete(id); }
+  S.items.forEach((it, i) => {
+    const n = nodeFor(it);
+    const w = it.w * s, h = w * it.a;
+    n.style.width = w + "px"; n.style.height = h + "px";
+    n.style.left = (it.x * s + x - w / 2) + "px"; n.style.top = (it.y * s + y - h / 2) + "px";
+    n.style.transform = it.r ? `rotate(${it.r}deg)` : "";
+    n.style.zIndex = i + 1;
+    n.classList.toggle("sel", sel === it.id && !S.locked);
+    const img = n.firstChild;
+    img.style.transform = it.f ? "scaleX(-1)" : "";
+    img.style.filter = it.g ? "grayscale(1)" : "";
+  });
+  $("#hint").hidden = S.items.length > 0;
+  $("#sel").hidden = !sel || S.locked || !find(sel);
+  $("#lock").classList.toggle("on", S.locked);
+  $("#lock").title = S.locked ? "Desbloquear" : "Bloquear";
+  $("#shackle").setAttribute("d", S.locked ? "M7 11V7a5 5 0 0 1 10 0v4" : "M7 11V7a5 5 0 0 1 9.9-1");
+  $("#gray").classList.toggle("on", !!find(sel)?.g);
+  $("#flip").classList.toggle("on", !!find(sel)?.f);
+  document.documentElement.dataset.theme = S.light ? "light" : "dark";
+  $("#themeIcon").setAttribute("d", S.light
+    ? "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"
+    : "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4");
+}
+
+// ---------- Touch / pointer gestures ----------
+// One finger: on an image moves it (unless locked), on its corner dot resizes it, elsewhere pans.
+// Two fingers: zoom and pan the canvas.
+const ptrs = new Map();
+let gest = null;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+function startPinch() {
+  const [a, b] = [...ptrs.values()];
+  gest = { type: "pinch", d0: Math.max(1, dist(a, b)), m0: mid(a, b), s0: S.cam.s, cx: S.cam.x, cy: S.cam.y };
+}
+function startPan(p) { gest = { type: "pan", cx: S.cam.x, cy: S.cam.y, px: p.x, py: p.y, moved: true }; }
+
+board.addEventListener("pointerdown", e => {
+  if (e.button > 0) return;
+  try { board.setPointerCapture(e.pointerId); } catch {}
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 2) { if (gest?.type !== "pinch") save(); startPinch(); return; }
+  if (ptrs.size > 2) return;
+  const el = e.target.closest(".item"), id = el?.dataset.id;
+  if (id && !S.locked && e.target.classList.contains("handle")) {
+    const it = find(id), c = toScreen(it);
+    gest = { type: "resize", id, w0: it.w, d0: Math.max(1, Math.hypot(e.clientX - c.x, e.clientY - c.y)), px: e.clientX, py: e.clientY, moved: true };
+  } else if (id && !S.locked) {
+    const it = find(id);
+    gest = { type: "move", id, x0: it.x, y0: it.y, px: e.clientX, py: e.clientY, moved: false };
+  } else {
+    gest = { type: "pan", cx: S.cam.x, cy: S.cam.y, px: e.clientX, py: e.clientY, moved: false };
+  }
+});
+
+board.addEventListener("pointermove", e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!gest) return;
+  if (gest.type === "pinch") {
+    if (ptrs.size < 2) return;
+    const [a, b] = [...ptrs.values()];
+    const s = clamp(gest.s0 * dist(a, b) / gest.d0, MIN_S, MAX_S), m = mid(a, b);
+    const wx = (gest.m0.x - gest.cx) / gest.s0, wy = (gest.m0.y - gest.cy) / gest.s0;
+    S.cam = { x: m.x - wx * s, y: m.y - wy * s, s };
+    return render();
+  }
+  const dx = e.clientX - gest.px, dy = e.clientY - gest.py;
+  if (!gest.moved && Math.hypot(dx, dy) > 4) gest.moved = true;
+  if (!gest.moved) return;
+  if (gest.type === "pan") { S.cam.x = gest.cx + dx; S.cam.y = gest.cy + dy; }
+  else if (gest.type === "move") { const it = find(gest.id); sel = gest.id; it.x = gest.x0 + dx / S.cam.s; it.y = gest.y0 + dy / S.cam.s; }
+  else if (gest.type === "resize") {
+    const it = find(gest.id), c = toScreen(it);
+    it.w = Math.max(30 / S.cam.s, gest.w0 * Math.hypot(e.clientX - c.x, e.clientY - c.y) / gest.d0);
+  }
+  render();
+});
+
+function endPointer(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  if (!gest) return;
+  if (gest.type === "pinch") {
+    if (ptrs.size === 1) startPan([...ptrs.values()][0]);
+    else if (ptrs.size === 0) gest = null;
+    save(); return;
+  }
+  if (ptrs.size > 0) return;
+  if (!gest.moved) sel = gest.type === "move" ? gest.id : null;
+  gest = null;
+  save(); render();
+}
+board.addEventListener("pointerup", endPointer);
+board.addEventListener("pointercancel", endPointer);
+
+// Trackpad / mouse wheel (Mac): pinch or ctrl+wheel zooms, scroll pans.
+board.addEventListener("wheel", e => {
+  e.preventDefault();
+  if (e.ctrlKey) {
+    const s = clamp(S.cam.s * Math.exp(-e.deltaY * 0.01), MIN_S, MAX_S);
+    const wx = (e.clientX - S.cam.x) / S.cam.s, wy = (e.clientY - S.cam.y) / S.cam.s;
+    S.cam = { x: e.clientX - wx * s, y: e.clientY - wy * s, s };
+  } else { S.cam.x -= e.deltaX; S.cam.y -= e.deltaY; }
+  render(); save();
+}, { passive: false });
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => e.preventDefault());
+
+// ---------- Adding images ----------
+const isImage = f => (f.type || "").startsWith("image/") || /\.(heic|heif|jpe?g|png|gif|webp|avif|bmp|tiff?)$/i.test(f.name || "");
+function loadImage(blob) {
+  return new Promise((res, rej) => {
+    const u = URL.createObjectURL(blob), img = new Image();
+    img.onload = () => { res(img); setTimeout(() => URL.revokeObjectURL(u), 0); };
+    img.onerror = () => { URL.revokeObjectURL(u); rej(new Error("decode")); };
+    img.src = u;
+  });
+}
+async function addBlob(blob, sx, sy) {
+  const img = await loadImage(blob);
+  const k = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  c.getContext("2d").drawImage(img, 0, 0, w, h);
+  const type = blob.type === "image/png" ? "image/png" : "image/jpeg";
+  const out = await new Promise(r => c.toBlob(r, type, 0.9));
+  if (!out) throw new Error("encode");
+  const id = newId();
+  await dbPut("img:" + id, out);
+  urls[id] = URL.createObjectURL(out);
+  const s = S.cam.s;
+  S.items.push({ id, x: (sx - S.cam.x) / s, y: (sy - S.cam.y) / s, w: Math.min(420, innerWidth * 0.4) / s, a: h / w, r: 0, f: false, g: false });
+  sel = id; save(); render();
+}
+async function addFiles(files, sx, sy) {
+  let i = 0, failed = 0;
+  for (const f of files) {
+    if (!isImage(f)) continue;
+    try { await addBlob(f, sx + i * 36, sy + i * 36); i++; } catch { failed++; }
+  }
+  if (failed) toast(failed === 1 ? "No pude abrir una imagen" : `No pude abrir ${failed} imágenes`);
+}
+
+$("#add").onclick = () => $("#file").click();
+$("#file").onchange = e => { const c = center(); addFiles([...e.target.files], c.x, c.y); e.target.value = ""; };
+
+const dropEl = $("#drop");
+let dragDepth = 0;
+window.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; dropEl.classList.add("on"); });
+window.addEventListener("dragover", e => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; });
+window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; dropEl.classList.remove("on"); } });
+window.addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0; dropEl.classList.remove("on");
+  const files = [...(e.dataTransfer?.files || [])];
+  if (files.length) addFiles(files, e.clientX, e.clientY);
+  else toast("Eso no era una imagen");
+});
+
+document.addEventListener("paste", e => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); const c = center(); addFiles(files, c.x, c.y); }
+});
+$("#paste").onclick = async () => {
+  try {
+    const blobs = [];
+    for (const item of await navigator.clipboard.read()) {
+      const t = item.types.find(t => t.startsWith("image/"));
+      if (t) blobs.push(await item.getType(t));
+    }
+    if (!blobs.length) return toast("No hay ninguna imagen copiada");
+    const c = center(); addFiles(blobs, c.x, c.y);
+  } catch { toast("No pude leer el portapapeles"); }
+};
+
+// ---------- Toolbar actions ----------
+function fitAll() {
+  if (!S.items.length) { S.cam = { x: innerWidth / 2, y: innerHeight / 2, s: 1 }; render(); return save(); }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const it of S.items) {
+    const turned = Math.round((it.r || 0) / 90) % 2 !== 0;
+    const w = turned ? it.w * it.a : it.w, h = turned ? it.w : it.w * it.a;
+    x0 = Math.min(x0, it.x - w / 2); x1 = Math.max(x1, it.x + w / 2);
+    y0 = Math.min(y0, it.y - h / 2); y1 = Math.max(y1, it.y + h / 2);
+  }
+  const m = 50, top = 70;
+  const s = clamp(Math.min((innerWidth - 2 * m) / (x1 - x0), (innerHeight - top - 2 * m) / (y1 - y0)), MIN_S, 2);
+  S.cam = { s, x: innerWidth / 2 - (x0 + x1) / 2 * s, y: (innerHeight + top) / 2 - (y0 + y1) / 2 * s };
+  render(); save();
+}
+$("#fit").onclick = fitAll;
+$("#lock").onclick = () => { S.locked = !S.locked; sel = null; toast(S.locked ? "Imágenes bloqueadas" : "Imágenes desbloqueadas"); render(); save(); };
+$("#theme").onclick = () => { S.light = !S.light; render(); save(); };
+function withSel(fn) { const it = find(sel); if (it) { fn(it); render(); save(); } }
+$("#front").onclick = () => withSel(it => { S.items = S.items.filter(i => i !== it); S.items.push(it); });
+$("#rotate").onclick = () => withSel(it => { it.r = ((it.r || 0) + 90) % 360; });
+$("#flip").onclick = () => withSel(it => { it.f = !it.f; });
+$("#gray").onclick = () => withSel(it => { it.g = !it.g; });
+$("#delete").onclick = () => withSel(it => {
+  S.items = S.items.filter(i => i !== it);
+  dbDel("img:" + it.id).catch(() => {});
+  if (urls[it.id]) { URL.revokeObjectURL(urls[it.id]); delete urls[it.id]; }
+  sel = null;
+});
+for (const b of document.querySelectorAll(".bar")) b.addEventListener("pointerdown", e => e.stopPropagation());
+
+// ---------- Start ----------
+(async () => {
+  try { navigator.storage?.persist?.(); } catch {}
+  try {
+    const saved = await dbGet("state");
+    if (saved && Array.isArray(saved.items)) S = { ...S, ...saved };
+  } catch { toast("Este navegador no deja guardar: las imágenes no se conservarán"); }
+  render();
+})();
+</script>
+</body>
+</html>
